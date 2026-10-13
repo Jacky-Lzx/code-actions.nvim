@@ -43,12 +43,28 @@ Options:
 ```lua
 require("code_actions").setup({
   resolve_timeout = 3000, -- milliseconds; no synchronous waits
+  backend = "vim", -- "vim" (default) or "delta"
+  delta = {
+    command = "delta", -- executable name or absolute path
+    args = {}, -- for example { "--line-numbers", "--side-by-side" }
+    timeout = 2000, -- milliseconds
+  },
   picker = { layout = { preset = "default" } },
 })
 ```
 
 `picker` customizes Snacks appearance. Item collection, preview, confirmation
 and close callbacks are owned by this plugin.
+
+Set `backend = "delta"` to format diffs with the optional
+[delta](https://dandavison.github.io/delta/) executable. Its ANSI colors are rendered
+in the Snacks preview buffer. Delta runs asynchronously with the preview window's
+width, dark/light mode, true color and paging disabled. Extra arguments are passed
+directly as an argument list, never through a shell; delta can read your normal
+Git configuration. Missing delta, startup errors, unsuccessful exits, empty output
+and timeouts fall back to the native diff. Command-only actions and resource-only
+summaries use the native text preview. Changing selection or closing the picker
+cancels any pending delta process and ignores late output.
 
 ## Behavior and limits
 
@@ -85,3 +101,8 @@ Integration tests start a real Neovim LSP client against a local fixture server
 and open an actual Snacks picker. No network or language server installation is
 required. The fixture is a protocol test, not a compatibility claim for every
 language server.
+
+Renderer tests cover native output, literal delta arguments, ANSI output,
+cancellation and fallback. Integration tests additionally exercise a missing
+executable and a timed-out process. If delta is installed, they test its real ANSI
+output, switching between delta and command-only previews, and failure fallback.

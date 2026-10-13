@@ -1,5 +1,10 @@
 local M = {}
-local config = { resolve_timeout = 3000, picker = {} }
+local config = {
+  resolve_timeout = 3000,
+  backend = "vim",
+  delta = { command = "delta", args = {}, timeout = 2000 },
+  picker = {},
+}
 local installed
 
 local function notify(message)
@@ -8,6 +13,7 @@ end
 
 local function select(actions, opts, on_choice)
   local closed, generation, confirming = false, 0, false
+  local stop_render = function() end
   local items, pending = {}, {}
   for i, entry in ipairs(actions) do
     local buf = entry.ctx.bufnr
@@ -86,6 +92,7 @@ local function select(actions, opts, on_choice)
   local function close()
     closed = true
     generation = generation + 1
+    stop_render()
     for _, request in pairs(pending) do
       request.client:cancel_request(request.id)
     end
@@ -109,6 +116,7 @@ local function select(actions, opts, on_choice)
   }, config.picker)
   options.preview = function(ctx)
     generation = generation + 1
+    stop_render()
     local current = generation
     local item = ctx.item
     if not item then
@@ -127,10 +135,14 @@ local function select(actions, opts, on_choice)
           action or {},
           (vim.lsp.get_client_by_id(item.entry.ctx.client_id) or {}).offset_encoding or "utf-16"
         )
-        ctx.preview:set_lines(
-          err and { err } or ok and lines or { "Preview unavailable: " .. tostring(lines) }
+        stop_render = require("code_actions.render").start(
+          ctx,
+          err and { err } or ok and lines or { "Preview unavailable: " .. tostring(lines) },
+          config,
+          function()
+            return not closed and current == generation and ctx.picker:current() == item
+          end
         )
-        ctx.preview:highlight({ ft = "diff" })
       end)
     end)
   end
@@ -190,7 +202,27 @@ local function select(actions, opts, on_choice)
 end
 
 function M.setup(opts)
-  config = vim.tbl_deep_extend("force", config, opts or {})
+  local next_config = vim.tbl_deep_extend("force", config, opts or {})
+  assert(
+    next_config.backend == "vim" or next_config.backend == "delta",
+    "backend must be 'vim' or 'delta'"
+  )
+  assert(
+    type(next_config.delta.command) == "string",
+    "delta.command must be an executable name or path"
+  )
+  assert(
+    type(next_config.delta.args) == "table" and vim.islist(next_config.delta.args),
+    "delta.args must be a list"
+  )
+  for _, arg in ipairs(next_config.delta.args) do
+    assert(type(arg) == "string", "delta.args must contain strings")
+  end
+  assert(
+    type(next_config.delta.timeout) == "number" and next_config.delta.timeout > 0,
+    "delta.timeout must be positive"
+  )
+  config = next_config
   local function install()
     if vim.ui.select == installed then
       return

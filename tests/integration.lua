@@ -3,7 +3,17 @@ vim.opt.rtp:prepend(vim.env.SNACKS_DIR)
 vim.o.columns, vim.o.lines = 120, 40
 require("snacks").setup({ picker = { enabled = true } })
 require("snacks.picker").setup()
-require("code_actions").setup()
+local backend = vim.env.CODE_ACTIONS_BACKEND or "vim"
+local delta_command = vim.env.CODE_ACTIONS_DELTA_COMMAND or "delta"
+local expect_delta = backend == "delta" and vim.env.CODE_ACTIONS_EXPECT_DELTA ~= "0"
+require("code_actions").setup({
+  backend = backend,
+  delta = {
+    command = delta_command,
+    timeout = tonumber(vim.env.CODE_ACTIONS_DELTA_TIMEOUT) or 2000,
+    args = vim.env.CODE_ACTIONS_DELTA_FAIL == "1" and { "--invalid-code-actions-test-flag" } or {},
+  },
+})
 local function wait(test, message)
   assert(vim.wait(5000, test, 10), message)
 end
@@ -36,15 +46,30 @@ wait(function()
 end, "actual Snacks picker opens")
 local picker = current()
 wait(function()
-  return preview_text(picker):find("+你好😀 world", 1, true)
+  return preview_text(picker):find("你好😀 world", 1, true)
 end, "real preview renders Unicode diff")
 assert(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1] == "hello world", "preview is isolated")
 assert(
-  vim.bo[picker.preview.win.buf].syntax == "diff"
-    or vim.treesitter.highlighter.active[picker.preview.win.buf],
+  expect_delta and vim.bo[picker.preview.win.buf].buftype == "terminal"
+    or not expect_delta
+      and (vim.bo[picker.preview.win.buf].syntax == "diff" or vim.treesitter.highlighter.active[picker.preview.win.buf]),
   "diff highlighting is active"
 )
 assert(#picker:items() == 2, "native actions reach Snacks")
+if expect_delta then
+  picker.list:move(2, true)
+  picker:show_preview()
+  wait(function()
+    return preview_text(picker):find("No text edit", 1, true)
+  end, "switching from delta to command-only preview")
+  assert(vim.bo[picker.preview.win.buf].buftype ~= "terminal", "old terminal buffer is cleared")
+  picker.list:move(1, true)
+  picker:show_preview()
+  wait(function()
+    return preview_text(picker):find("你好😀 world", 1, true)
+  end, "switching back to delta preview")
+  assert(vim.bo[picker.preview.win.buf].buftype == "terminal", "ANSI preview is recreated")
+end
 picker.opts.confirm(picker, picker:current())
 wait(function()
   return not current()
@@ -75,6 +100,9 @@ end, "native apply=true remains supported")
 assert(not current(), "native automatic apply bypasses picker")
 client:stop(true)
 print(
-  "code-actions: real LSP/Snacks integration passed (preview, apply, Visual, filter, cancel, auto-apply)"
+  "code-actions: real LSP/Snacks integration passed ("
+    .. backend
+    .. (expect_delta and "/ANSI" or "/native")
+    .. ", preview, apply, Visual, filter, cancel, auto-apply)"
 )
 vim.cmd("qa!")
