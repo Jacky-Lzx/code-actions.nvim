@@ -20,6 +20,10 @@ local function select(actions, opts, on_choice)
     items[i] = {
       text = opts.format_item(entry),
       entry = entry,
+      root = require("code_actions.preview").root(
+        buf,
+        vim.lsp.get_client_by_id(entry.ctx.client_id)
+      ),
       tick = vim.api.nvim_buf_get_changedtick(buf),
     }
   end
@@ -133,7 +137,8 @@ local function select(actions, opts, on_choice)
         local ok, lines = pcall(
           require("code_actions.preview").lines,
           action or {},
-          (vim.lsp.get_client_by_id(item.entry.ctx.client_id) or {}).offset_encoding or "utf-16"
+          (vim.lsp.get_client_by_id(item.entry.ctx.client_id) or {}).offset_encoding or "utf-16",
+          item.root
         )
         stop_render = require("code_actions.render").start(
           ctx,

@@ -66,9 +66,22 @@ and timeouts fall back to the native diff. Command-only actions and resource-onl
 summaries use the native text preview. Changing selection or closing the picker
 cancels any pending delta process and ignores late output.
 
+To hide the repeated top file section while keeping a project-relative path and
+line number in each hunk header:
+
+```lua
+delta = {
+  args = { "--file-style=omit", "--hunk-header-style=file line-number syntax" },
+},
+```
+
 ## Behavior and limits
 
 - Previews use loaded buffer contents, including unsaved edits, before disk.
+- File labels are relative to the source buffer's Git root, otherwise its LSP
+  workspace/root directory, otherwise Neovim's cwd when the picker opens. Files
+  outside that root keep absolute paths; non-file URIs remain unchanged. Only
+  display labels change, not the URIs used for applying edits.
 - UTF-8/UTF-16/UTF-32 edits use the server's position encoding via Neovim.
 - `changes` and ordered `documentChanges` support multiple files. File resource
   operations appear as summaries; the preview never creates, renames or deletes

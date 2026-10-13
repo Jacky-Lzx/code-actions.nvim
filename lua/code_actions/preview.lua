@@ -1,5 +1,41 @@
 local M = {}
 
+-- Prefer the source buffer's repository, then its LSP workspace, then cwd.
+-- The picker can change the current buffer/directory, so capture this on opening.
+function M.root(buf, client)
+  local git = vim.fs.root(buf, { ".git" })
+  if git then
+    return git
+  end
+  local path = vim.api.nvim_buf_get_name(buf)
+  local root
+  for _, folder in ipairs(client and client.workspace_folders or {}) do
+    if folder.uri:match("^file:") then
+      local folder_path = vim.uri_to_fname(folder.uri)
+      local candidate = vim.uv.fs_realpath(folder_path) or vim.fs.normalize(folder_path)
+      if vim.fs.relpath(candidate, path) and (not root or #candidate > #root) then
+        root = candidate
+      end
+    end
+  end
+  local configured = client and (client.root_dir or client.config and client.config.root_dir)
+  if type(configured) == "string" then
+    configured = vim.uv.fs_realpath(configured) or vim.fs.normalize(configured)
+  end
+  if not root and type(configured) == "string" and vim.fs.relpath(configured, path) then
+    root = configured
+  end
+  return root or vim.fn.getcwd()
+end
+
+local function label(uri, root)
+  if not uri:match("^file:") then
+    return uri
+  end
+  local path = vim.uri_to_fname(uri)
+  return vim.fs.relpath(root, path) or path
+end
+
 local function read(uri)
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(buf) and vim.uri_from_bufnr(buf) == uri then
@@ -27,7 +63,8 @@ end
 
 -- Replay text edits in documentChanges order. Resource operations are shown as
 -- summaries and modeled in memory, never performed while browsing the picker.
-function M.lines(action, encoding)
+function M.lines(action, encoding, root)
+  root = root or vim.fn.getcwd()
   if not action.edit then
     return { "No text edit to preview. This action runs a command when confirmed." }
   end
@@ -48,7 +85,8 @@ function M.lines(action, encoding)
       { result_type = "unified", ctxlen = 3 }
     )
     if diff ~= "" then
-      vim.list_extend(out, { "--- " .. uri, "+++ " .. uri })
+      local name = label(uri, root)
+      vim.list_extend(out, { "--- " .. name, "+++ " .. name })
       vim.list_extend(out, vim.split(diff, "\n", { trimempty = true }))
     end
   end
@@ -58,14 +96,17 @@ function M.lines(action, encoding)
       if change.textDocument then
         text(change.textDocument.uri, change.edits)
       elseif change.kind == "create" then
-        out[#out + 1] = "Create file: " .. change.uri
+        out[#out + 1] = "Create file: " .. label(change.uri, root)
         files[change.uri] = { "" }
       elseif change.kind == "rename" then
-        out[#out + 1] = "Rename file: " .. change.oldUri .. " -> " .. change.newUri
+        out[#out + 1] = "Rename file: "
+          .. label(change.oldUri, root)
+          .. " -> "
+          .. label(change.newUri, root)
         files[change.newUri] = content(change.oldUri)
         files[change.oldUri] = nil
       elseif change.kind == "delete" then
-        out[#out + 1] = "Delete file: " .. change.uri
+        out[#out + 1] = "Delete file: " .. label(change.uri, root)
         files[change.uri] = nil
       end
     end

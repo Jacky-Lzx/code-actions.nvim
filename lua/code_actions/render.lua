@@ -35,6 +35,7 @@ function M.start(ctx, lines, config, valid)
     stdin = text .. "\n",
     text = true,
     timeout = delta.timeout,
+    cwd = ctx.item and ctx.item.root or nil,
     env = { PAGER = "cat", DELTA_PAGER = "cat" },
   }, function(output)
     vim.schedule(function()

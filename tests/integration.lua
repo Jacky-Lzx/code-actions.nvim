@@ -11,7 +11,8 @@ require("code_actions").setup({
   delta = {
     command = delta_command,
     timeout = tonumber(vim.env.CODE_ACTIONS_DELTA_TIMEOUT) or 2000,
-    args = vim.env.CODE_ACTIONS_DELTA_FAIL == "1" and { "--invalid-code-actions-test-flag" } or {},
+    args = vim.env.CODE_ACTIONS_DELTA_FAIL == "1" and { "--invalid-code-actions-test-flag" }
+      or { "--file-style=omit", "--hunk-header-style=file line-number syntax" },
   },
 })
 local function wait(test, message)
@@ -29,7 +30,11 @@ local function preview_text(picker)
 end
 vim.cmd("enew")
 local buf = vim.api.nvim_get_current_buf()
-vim.api.nvim_buf_set_name(buf, vim.fn.tempname() .. ".txt")
+local project = vim.fn.tempname()
+vim.fn.mkdir(project .. "/.git", "p")
+vim.fn.mkdir(project .. "/markdown", "p")
+project = assert(vim.uv.fs_realpath(project))
+vim.api.nvim_buf_set_name(buf, project .. "/markdown/test.md")
 vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "hello world", "second line" })
 local id = vim.lsp.start({
   name = "code-actions-fixture",
@@ -56,6 +61,20 @@ assert(
   "diff highlighting is active"
 )
 assert(#picker:items() == 2, "native actions reach Snacks")
+assert(picker:current().root == project, "preview captures the source project's Git root")
+if expect_delta then
+  local text = preview_text(picker)
+  assert(
+    not text:find("file://", 1, true) and not text:find(project, 1, true),
+    "delta output omits URI prefixes and absolute project path"
+  )
+  assert(
+    text:find("markdown/test.md:1", 1, true),
+    "delta hunk title uses the project-relative path"
+  )
+  local _, occurrences = text:gsub("markdown/test%.md", "")
+  assert(occurrences == 1, "only the hunk title shows the filename; top file section is hidden")
+end
 if expect_delta then
   picker.list:move(2, true)
   picker:show_preview()
@@ -99,6 +118,7 @@ wait(function()
 end, "native apply=true remains supported")
 assert(not current(), "native automatic apply bypasses picker")
 client:stop(true)
+vim.fn.delete(project, "rf")
 print(
   "code-actions: real LSP/Snacks integration passed ("
     .. backend

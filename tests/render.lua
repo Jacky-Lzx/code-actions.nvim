@@ -5,7 +5,7 @@ local function check(value, label)
   assert(value, label)
   count = count + 1
 end
-local ctx = { win = vim.api.nvim_get_current_win(), preview = {} }
+local ctx = { win = vim.api.nvim_get_current_win(), preview = {}, item = { root = "/tmp/project" } }
 local resets, terminal, sent, system_calls = 0, 0, "", 0
 function ctx.preview:reset()
   resets = resets + 1
@@ -75,6 +75,7 @@ check(
 )
 check(process_opts.stdin == table.concat(lines, "\n") .. "\n", "diff is passed through stdin")
 check(process_opts.timeout == 500, "bounded asynchronous process")
+check(process_opts.cwd == ctx.item.root, "delta runs from the root used in display labels")
 complete({ code = 0, stdout = "\27[31mcolored\27[0m\n" })
 flush()
 check(terminal == 1 and sent:find("\27[31m", 1, true), "successful output keeps ANSI colors")
