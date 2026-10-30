@@ -1,5 +1,9 @@
 # code-actions.nvim
 
+> [!Warning]
+>
+> This plugin is no longer maintained. Use the [lsp-tools.nvim](https://github.com/Jacky-Lzx/lsp-tools.nvim) plugin as a more powerful replacement
+
 A small Snacks-only picker with asynchronous LSP code action previews.
 
 Neovim handles action requests, cursor/Visual ranges, diagnostics, filters and
